@@ -140,13 +140,15 @@ void setup() {
   initWiFi();
 }
 
+bool subscribed = false;
+
 void loop() {
   delay(1000);
 
-  // Nếu mất Wi-Fi, reconnect
+  // 1. Nếu mất Wi-Fi, reconnect
   if (!reconnectWiFi()) return;
 
-  // Nếu chưa kết nối TB, connect lại
+  // 2. Nếu chưa kết nối TB, connect lại
   if (!tb.connected()) {
     Serial.printf("Connecting to TB: %s (token=%s) ...\n", THINGSBOARD_SERVER, TOKEN);
     if (!tb.connect(THINGSBOARD_SERVER, TOKEN, THINGSBOARD_PORT)) {
@@ -155,10 +157,11 @@ void loop() {
       return;
     }
     Serial.println("  → Connected to ThingsBoard!");
+    // Đánh dấu chưa subscribe RPC lần nào kể từ sau khi vừa connect
     subscribed = false;
   }
 
-  // Nếu chưa subscribe RPC, thực hiện subscribe 2 method
+  // 3. Nếu chưa subscribe RPC (hoặc subscribe lần đầu sau reconnect)
   if (!subscribed) {
     Serial.println("Subscribing RPC methods...");
     const std::array<RPC_Callback, MAX_RPC_SUBS> callbacks = {
@@ -167,12 +170,14 @@ void loop() {
     };
     if (!rpc.RPC_Subscribe(callbacks.cbegin(), callbacks.cend())) {
       Serial.println("  → Subscribe RPC thất bại!");
-      return;
+      // *** Thay đổi: dù thất bại vẫn đánh dấu subscribed = true,
+      // để không spam thêm thật nhiều subscription request lên server ***
+      subscribed = true;
+    } else {
+      Serial.println("  → Subscribe RPC xong");
+      subscribed = true;
     }
-    Serial.println("  → Subscribe RPC xong");
-    subscribed = true;
   }
-
-  // Luôn gọi tb.loop() để xử lý incoming RPC, giữ kết nối, gửi ping, v.v.
+  // 4. Luôn gọi tb.loop() để nhận RPC, giữ kết nối v.v.
   tb.loop();
 }
